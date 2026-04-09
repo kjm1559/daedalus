@@ -195,18 +195,21 @@ export default function CLIApp() {
 }
 
 export function runCLI() {
-  const { unmount } = render(<CLIApp />);
-
-  // Keep process alive until user presses ESC
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-  process.stdin.on("data", (data) => {
-    // ESC key (0x1b) or Ctrl+C
-    if (data.toString() === "\x1b" || data[0] === 3) {
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-      unmount();
-      process.exit(0);
+  const { unmount } = render(<CLIApp />, { exitOnCtrlC: false });
+  
+  // Keep process alive by preventing exit
+  let keepRunning = true;
+  
+  process.on('beforeExit', () => {
+    if (keepRunning) {
+      // Prevent exit
+      return;
     }
+  });
+  
+  process.on('SIGINT', () => {
+    keepRunning = false;
+    unmount();
+    process.exit(0);
   });
 }
