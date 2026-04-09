@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DocumentStore } from "@/lib/documentStore";
 import { Document } from "@/types/document";
-import { DocumentCard } from "@/components/ui/DocumentCard";
 
 export default function DocumentView() {
   const { docId } = useParams<{ docId: string }>();
@@ -19,7 +18,7 @@ export default function DocumentView() {
   const loadDocument = async () => {
     try {
       const store = new DocumentStore("./workspace");
-      const doc = await store.loadDocument(docId);
+      const doc = await store.loadDocument(docId || "");
       setDocument(doc);
     } catch (error) {
       console.error("Failed to load document:", error);

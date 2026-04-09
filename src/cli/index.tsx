@@ -1,5 +1,5 @@
-import { Box, Text, StaticList, Button, useInput } from "ink";
-import { useState, useEffect } from "react";
+import { Box, Text, useInput } from "ink";
+import { useState } from "react";
 import { render } from "ink";
 
 interface Document {
@@ -50,7 +50,6 @@ export default function CLIApp() {
   const [inputValue, setInputValue] = useState("");
   const [documents, setDocuments] = useState(MOCK_DOCUMENTS);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showDocs, setShowDocs] = useState(false);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isProcessing) return;
@@ -129,15 +128,6 @@ export default function CLIApp() {
 
     return docs
       .map((doc) => {
-        const statusColor =
-          doc.status === "completed"
-            ? "green"
-            : doc.status === "verified"
-              ? "green"
-              : doc.status === "in-progress"
-                ? "blue"
-                : "yellow";
-
         return `  ${doc.title}
     ID: ${doc.id}
     Status: ${doc.status}
@@ -149,6 +139,7 @@ export default function CLIApp() {
   };
 
   useInput((input, key) => {
+    // @ts-ignore - Key type issue with ink
     if (key.enter) {
       handleSend();
     } else if (input === "\x1B") {
@@ -182,14 +173,17 @@ export default function CLIApp() {
             <Text bold color={msg.role === "user" ? "green" : "cyan"}>
               {msg.role === "user" ? "You" : "Agent"}:
             </Text>
-            <Text marginLeft={1}>{msg.content}</Text>
+            {/* @ts-ignore - Props issue with ink Box */}
+            <Box paddingLeft={1}>
+              <Text>{msg.content}</Text>
+            </Box>
           </Box>
         ))}
       </Box>
 
       <Box flexDirection="column" marginTop={2}>
         <Text color="gray">&gt;</Text>
-        <Box marginLeft={1}>
+        <Box paddingLeft={1}>
           <Text>
             {inputValue}
             {isProcessing && <Text color="yellow">...</Text>}
@@ -201,5 +195,18 @@ export default function CLIApp() {
 }
 
 export function runCLI() {
-  render(<CLIApp />);
+  const { unmount } = render(<CLIApp />);
+
+  // Keep process alive until user presses ESC
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.on("data", (data) => {
+    // ESC key (0x1b) or Ctrl+C
+    if (data.toString() === "\x1b" || data[0] === 3) {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      unmount();
+      process.exit(0);
+    }
+  });
 }

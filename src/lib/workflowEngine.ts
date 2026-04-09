@@ -33,7 +33,7 @@ export class WorkflowEngine {
   private currentTask: Task | null = null;
 
   constructor(config: WorkflowEngineConfig) {
-    this.workflow = createWorkflow(config.documentStore.workspacePath);
+    this.workflow = createWorkflow("Daedalus Workflow");
     this.documentStore = config.documentStore;
     this.llmService = config.llmService;
     this.maxSteps = config.maxSteps || 50;
@@ -61,7 +61,7 @@ export class WorkflowEngine {
       throw new Error("Workflow is already running");
     }
 
-    this.workflow = startWorkflow(this.workflow);
+    this.workflow = { ...this.workflow, state: "executing" };
     this.state = "running";
     this.stepCount = 0;
 
@@ -111,8 +111,19 @@ export class WorkflowEngine {
     try {
       const result = await this.executeTask(nextTask);
 
-      if (result.verificationPassed) {
-        this.workflow = completeTask(this.workflow, nextTask.id);
+      if (result.status === "passed") {
+        this.workflow = {
+          ...this.workflow,
+          tasks: this.workflow.tasks.map((t) =>
+            t.id === nextTask.id
+              ? {
+                  ...t,
+                  status: "completed" as const,
+                  completedAt: new Date().toISOString(),
+                }
+              : t,
+          ),
+        };
         await this.executeNextTask();
       } else {
         this.state = "failed";
@@ -179,7 +190,8 @@ export class WorkflowEngine {
 
     const verification = await this.verifyTask(savedDoc, task);
 
-    savedDoc.status = verification.status;
+    const newStatus = verification.status === "passed" ? "completed" : "failed";
+    savedDoc.status = newStatus as any;
     await this.documentStore.saveDocument(savedDoc);
 
     return verification;
@@ -234,7 +246,13 @@ Provide a clear, structured response.`;
       },
     ];
 
-    const verification = createVerification(document.id, checks);
+    const verification: VerificationResult = {
+      id: Date.now().toString(),
+      documentId: document.id,
+      status: checks.every((c) => c.passed) ? "passed" : "failed",
+      checks,
+      timestamp: new Date().toISOString(),
+    };
 
     this.workflow = {
       ...this.workflow,
@@ -245,7 +263,15 @@ Provide a clear, structured response.`;
   }
 
   private async completeWorkflow(): Promise<void> {
-    this.workflow = completeWorkflow(this.workflow);
+    const allCompleted = this.workflow.tasks.every(
+      (t) => t.status === "completed",
+    );
+    if (allCompleted) {
+      this.workflow = {
+        ...this.workflow,
+        state: "completed",
+      };
+    }
     this.state = "completed";
   }
 }

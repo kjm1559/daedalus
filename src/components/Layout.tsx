@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 
-export default function Layout() {
+export default function Layout({ children }: { children?: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <header className="bg-white dark:bg-gray-800 shadow">
@@ -12,6 +12,7 @@ export default function Layout() {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {children}
         <Outlet />
       </main>
       <Toaster position="top-right" richColors />

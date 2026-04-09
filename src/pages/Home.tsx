@@ -26,7 +26,9 @@ export default function Home() {
     new DocumentStore("./workspace"),
   );
   const [llmService] = useState<LLMService>(LLMService.fromEnv());
-  const [workflowEngine] = useState<WorkflowEngine | null>(null);
+  const [workflowEngine, setWorkflowEngine] = useState<WorkflowEngine | null>(
+    null,
+  );
 
   useState(() => {
     loadDocuments();

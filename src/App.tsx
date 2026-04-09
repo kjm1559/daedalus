@@ -6,7 +6,6 @@ import Workspace from "@/pages/Workspace";
 import DocumentView from "@/pages/DocumentView";
 import SessionSelector from "@/pages/SessionSelector";
 import SessionWorkspace from "@/pages/SessionWorkspace";
-import { WorkflowEngine } from "@/lib/workflowEngine";
 
 function App() {
   return (
