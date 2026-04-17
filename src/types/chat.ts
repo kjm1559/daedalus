@@ -53,17 +53,16 @@ export interface VerificationRequest {
 }
 
 export interface WorkflowEngineConfig {
-  messageStore: MessageStore;
-  llmService: LLMService;
-  documentStore: DocumentStore;
+  documentStore: any;
+  llmService: any;
   maxSteps?: number;
   verificationTimeout?: number;
 }
 
 export interface ChatEngineConfig {
-  messageStore: MessageStore;
-  llmService: LLMService;
-  documentStore: DocumentStore;
+  messageStore: any;
+  llmService: any;
+  documentStore: any;
   maxSteps?: number;
   verificationTimeout?: number;
 }

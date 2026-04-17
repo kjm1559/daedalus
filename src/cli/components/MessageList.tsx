@@ -32,11 +32,13 @@ export function MessageList({ messages }: MessageListProps) {
                     >
                       [{tc.status}] {tc.name}
                     </Text>
-                    {tc.result && typeof tc.result === "object" && (
+                    {tc.result &&
+                    typeof tc.result === "object" &&
+                    tc.result !== null ? (
                       <Text color="gray">
                         {JSON.stringify(tc.result, null, 2)}
                       </Text>
-                    )}
+                    ) : null}
                   </Box>
                 ))}
               </Box>

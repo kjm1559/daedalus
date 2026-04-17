@@ -4,6 +4,7 @@ import { ChatEngine } from "@/lib/chatEngine";
 import { MessageStore } from "@/lib/messageStore";
 import { LLMService } from "@/lib/llm";
 import { DocumentStore } from "@/lib/documentStore";
+import "dotenv/config";
 
 async function main() {
   const documentStore = new DocumentStore("./workspace");
@@ -28,6 +29,27 @@ async function main() {
   rl.prompt();
 
   let currentSession: string | null = null;
+
+  if (currentSession) {
+    const session = await chatEngine.loadSession(currentSession);
+    if (session) {
+      console.log(`\nResumed session: ${session.title} (ID: ${session.id})\n`);
+    } else {
+      const sessionTitle = `Session ${uuidv4().slice(0, 8)}`;
+      const newSession = await chatEngine.createSession(sessionTitle);
+      currentSession = newSession.id;
+      console.log(
+        `\nAuto-created session: ${newSession.title} (ID: ${newSession.id})\n`,
+      );
+    }
+  } else {
+    const sessionTitle = `Session ${uuidv4().slice(0, 8)}`;
+    const session = await chatEngine.createSession(sessionTitle);
+    currentSession = session.id;
+    console.log(
+      `\nAuto-created session: ${session.title} (ID: ${session.id})\n`,
+    );
+  }
 
   rl.on("line", async (input) => {
     const trimmed = input.trim();
@@ -84,16 +106,36 @@ create a workflow, execute tasks, and provide results with verification.`);
         // User message
         console.log(`\nYou: ${trimmed}\n`);
 
-        // Process message
-        const response = await chatEngine.processMessage(trimmed);
+        // Process message with streaming
+        console.log("Agent: ");
+        const messageStream = chatEngine.streamProcessMessage(trimmed);
 
-        console.log(`Agent: ${response.content}`);
-        if (response.metadata?.toolCalls?.length) {
-          console.log(
-            `\nTool calls executed: ${response.metadata.toolCalls.length}`,
-          );
+        let fullContent = "";
+        for await (const message of messageStream) {
+          if (message.status === "streaming") {
+            // Clear current line and print updated content
+            process.stdout.write("\r\x1b[K"); // Clear line
+            process.stdout.write(`Agent: ${message.content}`);
+            fullContent = message.content;
+          }
         }
+
+        console.log(); // New line after streaming complete
         console.log();
+
+        if (fullContent) {
+          const response: any = {
+            content: fullContent,
+            metadata: {
+              toolCalls: [],
+            },
+          };
+
+          // Reconstruct metadata from the last message
+          if (messageStream[Symbol.asyncIterator]) {
+            // Tool calls info would be available here
+          }
+        }
     }
 
     rl.prompt();

@@ -32,7 +32,7 @@ export default function SessionSelector() {
 
   const loadSessions = async () => {
     try {
-      const loadedSessions = await sessionManager.getSessions();
+      const loadedSessions = sessionManager.getSessions();
       setSessions(loadedSessions);
     } catch (error) {
       console.error("Failed to load sessions:", error);

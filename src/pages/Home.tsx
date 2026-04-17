@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { DocumentStore, documentStore } from "@/lib/documentStore";
 import { LLMService } from "@/lib/llm";
 import { WorkflowEngine } from "@/lib/workflowEngine";
+import type { Task } from "@/lib/workflowEngine";
 import { Document } from "@/types/document";
 import { Workflow } from "@/lib/workflow";
 import { DocumentCard } from "@/components/ui/DocumentCard";
@@ -30,9 +31,9 @@ export default function Home() {
     null,
   );
 
-  useState(() => {
+  useEffect(() => {
     loadDocuments();
-  });
+  }, []);
 
   const loadDocuments = async () => {
     try {
@@ -73,7 +74,9 @@ export default function Home() {
             description: task.description,
             dependencies: task.dependencies,
           };
-          newWorkflowEngine.getWorkflow().tasks.push(taskToAdd as any);
+          newWorkflowEngine
+            .getWorkflow()
+            .tasks.push(taskToAdd as unknown as Task);
         }
       }
 

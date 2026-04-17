@@ -1,6 +1,5 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, render } from "ink";
 import { useState } from "react";
-import { render } from "ink";
 
 interface Document {
   id: string;
@@ -139,7 +138,7 @@ export default function CLIApp() {
   };
 
   useInput((input, key) => {
-    // @ts-ignore - Key type issue with ink
+    // @ts-expect-error - Key type issue with ink
     if (key.enter) {
       handleSend();
     } else if (input === "\x1B") {
@@ -173,7 +172,6 @@ export default function CLIApp() {
             <Text bold color={msg.role === "user" ? "green" : "cyan"}>
               {msg.role === "user" ? "You" : "Agent"}:
             </Text>
-            {/* @ts-ignore - Props issue with ink Box */}
             <Box paddingLeft={1}>
               <Text>{msg.content}</Text>
             </Box>
@@ -196,18 +194,18 @@ export default function CLIApp() {
 
 export function runCLI() {
   const { unmount } = render(<CLIApp />, { exitOnCtrlC: false });
-  
+
   // Keep process alive by preventing exit
   let keepRunning = true;
-  
-  process.on('beforeExit', () => {
+
+  process.on("beforeExit", () => {
     if (keepRunning) {
       // Prevent exit
       return;
     }
   });
-  
-  process.on('SIGINT', () => {
+
+  process.on("SIGINT", () => {
     keepRunning = false;
     unmount();
     process.exit(0);

@@ -1,93 +1,94 @@
-# Daedalus - AGENTS.md
+# AGENTS.md - Daedalus
 
-## Project Overview
-React/TypeScript project with TUI (Ink) and WebUI (React + Vite). Agent workflow orchestration system for low-parameter LLMs.
+Agent workflow orchestration system for low-parameter LLMs. React + Vite + TypeScript (WebUI + CLI).
 
-## Build, Lint, and Test Commands
+## Quick Commands
 
-### Development
-- `npm run dev` - Start Web UI dev server
-- `npm run cli` - Start TUI CLI interface
-
-### Build & Production
-- `npm run build` - Build Web UI for production
-- `npm run preview` - Preview production build
-
-### Linting
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Run ESLint with auto-fix
-- `npm run format` - Run Prettier with auto-fix
-- `npm run check` - Run TypeScript type checking
-
-### Testing
-- `npm run test` - Run Vitest in watch mode
-- `npm run test:ui` - Run Vitest with interactive UI
-- `npm run test:coverage` - Generate coverage report
-- `npm run test:ci` - Run tests in headless mode with coverage
-- `npm run test:e2e` - Run Playwright e2e tests
-- `npm run test:e2e:ui` - Run Playwright in UI mode
-
-## Code Style Guidelines
-
-### Import Organization
-1. External dependencies (alphabetical) - npm packages
-2. Internal imports (alphabetical) - use `@/` alias for `src/`
-3. Type imports - separate from value imports
-
-```typescript
-// External first
-import { QueryClient } from '@tanstack/react-query'
-
-// Internal second
-import { AuthProvider } from '@/contexts/AuthContext'
+```
+npm run dev          # Start WebUI dev server (port 5173)
+npm run build        # tsc && vite build
+npm run check        # tsc --noEmit (type check)
+npm run lint         # ESLint (no warnings allowed)
+npm run lint:fix     # Auto-fix ESLint
+npm run format       # Prettier write
+npm run test         # Vitest
+npm run cli          # Run CLI (tsx src/cli/chat.tsx)
 ```
 
-### Type Usage
-- **Strict typing** - NO `any` types
-- **Interfaces** - object shapes, React props, extending/implementing
-- **Type aliases** - union types, primitive aliases, complex types
-- All functions have explicit return types
-- All parameters are typed
-- Strict null checks enabled
+## Environment
 
-```typescript
-// Interface for object shape
-export interface User { id: string; email: string; name: string }
+Copy `.env.example` to `.env`. Required vars:
 
-// Type alias for union
-export type Currency = 'USD' | 'KRW' | 'JPY'
-```
+| Variable                       | Default                  | Description                                    |
+| ------------------------------ | ------------------------ | ---------------------------------------------- |
+| `OLLAMA_BASE_URL`              | `http://localhost:11434` | Ollama server URL                              |
+| `OLLAMA_MODEL`                 | `llama3.2`               | Model to use                                   |
+| `OPENAI_API_KEY`               | —                        | OpenAI key (optional, overrides Ollama if set) |
+| `OPENAI_MODEL`                 | `gpt-4o-mini`            | OpenAI model                                   |
+| `DAEDALUS_WORKSPACE`           | `./workspace`            | Document/message storage path                  |
+| `MAX_WORKFLOW_STEPS`           | `50`                     | Max workflow steps                             |
+| `DEFAULT_VERIFICATION_TIMEOUT` | `300000`                 | Verification timeout (ms)                      |
 
-### Naming Conventions
-- **camelCase** - variables, functions, methods
-- **PascalCase** - components, types, interfaces
-- **kebab-case** - file names
+LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 
-### Error Handling
-- Custom error classes
-- Try/catch with specific error handling
-- Toast notifications for user feedback (sonner)
-- Never suppress errors with `as any` or `@ts-ignore`
+## Architecture
 
-### File Organization
-```
-src/
-├── components/     # Shared UI components
-│   ├── ui/       # Primitive components (Button, Input, Card)
-│   └── ...
-├── contexts/      # React contexts
-├── features/      # Feature-based modules
-├── lib/           # Library utilities
-│   ├── api/
-│   └── utils/
-├── types/         # TypeScript definitions
-└── cli/           # TUI CLI interface
-```
+**Entry points:**
 
-## AGENTS Workflow Rules
+- WebUI: `src/main.tsx` → `src/App.tsx` (React Router: `/chat/new`, `/chat/:sessionId`)
+- CLI: `src/cli/index.tsx` (Ink TUI)
+- CLI Chat: `src/cli/chat.tsx` (`npm run cli`)
 
-1. **Plan First** - Every task requires a detailed plan broken into small atomic units
-2. **Log Progress** - Maintain HISTORY.md with brief work logs
-3. **Verify Each Step** - Complete verification before proceeding to next step
-4. **Verify Before Commit** - Run diagnostics, tests, and validation before committing
-5. **Verify Before Push** - Ensure all checks pass before pushing
+**Core libraries (`src/lib/`):**
+
+- `workflow.ts` — Task/Workflow/VerificationResult types + factory functions
+- `workflowEngine.ts` — Orchestrates task execution with dependency resolution
+- `chatEngine.ts` — Parses user messages → workflow → executes → streams response
+- `llm.ts` — LLMService (Ollama/OpenAI, sync + streaming)
+- `documentStore.ts` — File-based doc storage (`workspace/*.md` with YAML-like frontmatter)
+- `messageStore.ts` — File-based chat storage (`workspace/messages/*.json`)
+- `sessionManager.ts` — Session CRUD
+- `documentVerification.ts` — Verification status lookup
+
+**State:**
+
+- `src/stores/chatStore.ts` — Zustand for chat UI state
+- `src/contexts/ChatContext.tsx` — Provides ChatEngine, MessageStore, LLMService to React tree
+
+**Types:** `src/types/chat.ts`, `src/types/document.ts`
+
+**Pages:** `src/pages/` — Home, Workspace, SessionSelector, DocumentView, ChatRoutes
+
+**CLI components:** `src/cli/components/`
+
+## Gotchas
+
+- `tsconfig.json`: `noUnusedLocals: false`, `noUnusedParameters: false` — unused vars are OK
+- `@/*` path alias maps to `src/*`
+- `documentStore.ts` has a **default singleton** instance (`new DocumentStore("./workspace")`) — don't assume all code uses it; many components create their own instances
+- `src/lib/workflowEngine.ts` line 198: `savedDoc.status = newStatus as Document["status"]` — type assertion fixed (was `as any`)
+- `chatEngine.ts` has a local `Workflow` type definition that shadows `src/lib/workflow.ts`
+- `features/` directory is **empty** — planned but not implemented
+- Documents stored as `workspace/<uuid>.md` with frontmatter (`key: value` per line between `---` delimiters)
+- Messages stored as `workspace/messages/<sessionId>.json` (ChatSession JSON)
+- `LLMService.fromEnv()` reads `process.env` — works in Node/CLI but may be undefined in browser
+- `src/cli/chat.tsx` and `src/cli/chat.ts` — CLI entry points; `.tsx` is the main Ink-based CLI, `.ts` is a legacy variant
+- `src/cli/simple.ts` — legacy CLI variant (readline-based)
+- `tsconfig.node.json` only includes `vite.config.ts` — CLI files are covered by `tsconfig.json`
+- ESLint `max-warnings` is set to 60 — project has remaining warnings from legacy code
+- `.eslintrc.cjs` ignores CLI legacy files and test files
+
+## Lint & Type Rules
+
+- `@typescript-eslint/no-explicit-any`: **warn** (not error) — `any` used in JSON parsing and config types
+- `@typescript-eslint/no-floating-promises`: **warn** — legacy code has unawaited promises
+- `@typescript-eslint/no-unsafe-*`: **off** — JSON parsing results used without full type guards
+- `@typescript-eslint/require-await`: **off** — some async methods don't need await
+- `no-case-declarations`: **off** — switch cases use lexical declarations
+- `react-hooks/exhaustive-deps`: **warn** — some hooks have intentional missing deps
+
+## Workflow
+
+User message → `ChatEngine.processMessage()` → LLM parses intent → creates `Workflow` → `WorkflowEngine` executes tasks in dependency order → each task generates a document → verifies → streams summary back.
+
+Simple greetings/questions bypass workflow and go directly to LLM.

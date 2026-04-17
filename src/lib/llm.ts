@@ -24,6 +24,14 @@ export interface ChatCompletion {
   };
 }
 
+interface OllamaResponse {
+  message?: { content?: string };
+}
+
+interface OpenAIResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+}
+
 export class LLMService {
   private config: LLMConfig;
   private abortController: AbortController | null = null;
@@ -106,6 +114,9 @@ export class LLMService {
       throw new Error(`Ollama API error: ${response.statusText}`);
     }
 
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
@@ -118,7 +129,7 @@ export class LLMService {
 
       for (const line of lines) {
         try {
-          const data = JSON.parse(line);
+          const data = JSON.parse(line) as OllamaResponse;
           if (data.message?.content) {
             onToken?.(data.message.content);
             yield data.message.content;
@@ -156,6 +167,9 @@ export class LLMService {
       throw new Error(`OpenAI API error: ${response.statusText}`);
     }
 
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
@@ -172,8 +186,8 @@ export class LLMService {
           if (data === "[DONE]") continue;
 
           try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content;
+            const parsed = JSON.parse(data) as OpenAIResponse;
+            const content = parsed.choices?.[0]?.message?.content;
             if (content) {
               onToken?.(content);
               yield content;
@@ -207,7 +221,7 @@ export class LLMService {
       throw new Error(`Ollama API error: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as OllamaResponse;
     return data.message?.content || "";
   }
 
@@ -233,7 +247,7 @@ export class LLMService {
       throw new Error(`OpenAI API error: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as OpenAIResponse;
     return data.choices?.[0]?.message?.content || "";
   }
 }

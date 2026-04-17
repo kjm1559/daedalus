@@ -134,7 +134,7 @@ export class DocumentStore {
     }
 
     const linkedIds = frontmatter.linkedDocumentIds
-      ? JSON.parse(frontmatter.linkedDocumentIds)
+      ? (JSON.parse(frontmatter.linkedDocumentIds) as string[])
       : [];
 
     return {

@@ -1,6 +1,5 @@
 import { DocumentStore } from "@/lib/documentStore";
 import { LLMService } from "@/lib/llm";
-import { WorkflowEngine } from "@/lib/workflowEngine";
 import { Workflow } from "@/lib/workflow";
 
 export interface Session {

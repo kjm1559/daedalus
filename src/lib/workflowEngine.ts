@@ -8,6 +8,8 @@ import { DocumentStore } from "@/lib/documentStore";
 import { LLMService, Message } from "@/lib/llm";
 import { Document } from "@/types/document";
 
+export type { Task };
+
 export interface WorkflowEngineConfig {
   documentStore: DocumentStore;
   llmService: LLMService;
@@ -157,7 +159,9 @@ export class WorkflowEngine {
     return pendingTasks[0] || null;
   }
 
-  private async executeTask(task: Task): Promise<VerificationResult> {
+  public async executeTask(
+    task: Task,
+  ): Promise<VerificationResult & { content: string }> {
     const taskContent = await this.generateTaskContent(task);
 
     const newDoc: Document = {
@@ -191,10 +195,14 @@ export class WorkflowEngine {
     const verification = await this.verifyTask(savedDoc, task);
 
     const newStatus = verification.status === "passed" ? "completed" : "failed";
-    savedDoc.status = newStatus as any;
+    savedDoc.status = newStatus as Document["status"];
     await this.documentStore.saveDocument(savedDoc);
 
-    return verification;
+    // Return both verification result and the generated content
+    return {
+      ...verification,
+      content: taskContent,
+    };
   }
 
   private async generateTaskContent(task: Task): Promise<string> {
@@ -273,5 +281,9 @@ Provide a clear, structured response.`;
       };
     }
     this.state = "completed";
+  }
+
+  getCurrentTaskId(): string | undefined {
+    return this.currentTask?.id;
   }
 }

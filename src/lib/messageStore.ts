@@ -29,7 +29,7 @@ export class MessageStore {
     const filePath = this.getFilePath(sessionId);
     try {
       const existingData = await fs.readFile(filePath, "utf-8");
-      const session: ChatSession = JSON.parse(existingData);
+      const session: ChatSession = JSON.parse(existingData) as ChatSession;
       session.messages.push(message);
       session.updatedAt = new Date().toISOString();
       await fs.writeFile(filePath, JSON.stringify(session, null, 2));
@@ -49,7 +49,7 @@ export class MessageStore {
     const filePath = this.getFilePath(sessionId);
     try {
       const data = await fs.readFile(filePath, "utf-8");
-      return JSON.parse(data);
+      return JSON.parse(data) as ChatSession;
     } catch {
       return null;
     }
