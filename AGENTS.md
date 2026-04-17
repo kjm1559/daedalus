@@ -1,6 +1,6 @@
 # AGENTS.md - Daedalus
 
-Agent workflow orchestration system for low-parameter LLMs. React + Vite + TypeScript (WebUI + CLI).
+Agent workflow orchestration system for low-parameter LLMs. React + Vite + TypeScript (WebUI) + Python (CLI).
 
 ## Quick Commands
 
@@ -13,6 +13,7 @@ npm run lint:fix     # Auto-fix ESLint
 npm run format       # Prettier write
 npm run test         # Vitest
 npm run cli          # Run CLI (tsx src/cli/chat.tsx)
+python -m cli.chat   # Run Python CLI
 ```
 
 ## Environment
@@ -33,6 +34,8 @@ LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 
 ## Architecture
 
+### TypeScript (WebUI)
+
 **Entry points:**
 
 - WebUI: `src/main.tsx` → `src/App.tsx` (React Router: `/chat/new`, `/chat/:sessionId`)
@@ -49,17 +52,63 @@ LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 - `messageStore.ts` — File-based chat storage (`workspace/messages/*.json`)
 - `sessionManager.ts` — Session CRUD
 - `documentVerification.ts` — Verification status lookup
+- `utils.ts` — `cn()` utility (clsx + tailwind-merge)
+- `utils/cn.ts` — `cn()`, `formatDate()`, `formatTimeAgo()` utilities
 
 **State:**
 
 - `src/stores/chatStore.ts` — Zustand for chat UI state
 - `src/contexts/ChatContext.tsx` — Provides ChatEngine, MessageStore, LLMService to React tree
+- `src/contexts/QueryContext.tsx` — React Query QueryClient singleton
 
 **Types:** `src/types/chat.ts`, `src/types/document.ts`
 
-**Pages:** `src/pages/` — Home, Workspace, SessionSelector, DocumentView, ChatRoutes
+**Pages:** `src/pages/` — Home, Workspace, SessionSelector, DocumentView, ChatRoutes, SessionWorkspace
 
-**CLI components:** `src/cli/components/`
+**UI components (`src/components/ui/`):**
+
+- `Button.tsx` — Button with variant/size props
+- `Card.tsx` — Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter
+- `Input.tsx` — Input, Textarea
+- `Badge.tsx` — Status badge with variants
+- `DocumentCard.tsx` — Document card with status display
+- `DocumentTree.tsx` — Hierarchical document tree view
+
+**Chat components (`src/components/chat/`):**
+
+- `ChatContainer.tsx` — Main chat layout with header, messages, input
+- `ChatInput.tsx` — Auto-resizing textarea with send button
+- `MessageList.tsx` — Message bubbles with tool call display
+- `SessionList.tsx` — Session list with create/open actions
+- `StreamingIndicator.tsx` — Animated "AI is thinking..." indicator
+
+**Layout:**
+
+- `src/components/Layout.tsx` — App shell with header, main, Toaster
+
+### Python (CLI)
+
+**Entry point:** `src/cli/chat.py` (`python -m cli.chat`)
+
+**Core libraries (`src/lib/`):**
+
+- `chat_engine.py` — Chat engine (imports from `lib.*` and `models.*`)
+- `workflow_engine.py` — Workflow engine (imports from `lib.*` and `models.*`)
+- `workflow.py` — Workflow utilities (imports from `models.*`)
+- `llm.py` — LLM service (imports from `models.*`)
+- `document_store.py` — Document storage (imports from `models.*`)
+- `message_store.py` — Message storage (imports from `models.*`)
+
+**Types (`src/models/`):**
+
+- `data.py` — All Pydantic/dataclass models (MessageRole, TaskStatus, WorkflowState, etc.)
+
+**CLI components (`src/cli/`):**
+
+- `chat.py` — Main CLI entry point (prompt_toolkit)
+- `components.py` — CLI prompt components
+
+**Import pattern:** Python files use flat imports (`from lib.xxx import YYY`, `from models.data import ZZZ`), not `daedalus.*` prefix.
 
 ## Gotchas
 
@@ -77,6 +126,7 @@ LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 - `tsconfig.node.json` only includes `vite.config.ts` — CLI files are covered by `tsconfig.json`
 - ESLint `max-warnings` is set to 60 — project has remaining warnings from legacy code
 - `.eslintrc.cjs` ignores CLI legacy files and test files
+- Python CLI uses flat imports: `from lib.xxx import YYY`, `from models.data import ZZZ` (no `daedalus.` prefix)
 
 ## Lint & Type Rules
 
