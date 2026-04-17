@@ -92,3 +92,7 @@ LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 User message → `ChatEngine.processMessage()` → LLM parses intent → creates `Workflow` → `WorkflowEngine` executes tasks in dependency order → each task generates a document → verifies → streams summary back.
 
 Simple greetings/questions bypass workflow and go directly to LLM.
+
+## Commit & Push
+
+코드 변경 작업 완료 시 마지막에 커밋 및 푸시를 해야 한다.
