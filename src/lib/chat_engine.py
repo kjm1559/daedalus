@@ -192,8 +192,7 @@ Please provide a comprehensive summary of what was accomplished, including:
                 )
 
             yield {**assistant_message.__dict__, "content": full_summary}
-        except Exception as e:
-            print(f"Failed to generate response: {e}")
+        except Exception:
             fallback = f"Completed {len(workflow.tasks)} tasks. {len(workflow.tasks)} tools executed."
             yield {
                 **assistant_message.__dict__,
@@ -255,12 +254,10 @@ Output format (JSON):
 
         try:
             response = await self.llm_service.chat(messages)
-            print(f"LLM Workflow Response: {response}")
 
             workflow = self._parse_workflow_response(response, content)
             return workflow
         except Exception as e:
-            print(f"LLM Error, using fallback: {e}")
             return Workflow(
                 id=str(uuid4()),
                 title="Chat Response",
@@ -312,14 +309,12 @@ Output format (JSON):
             code_block_match = re.search(r"```json\s*([\s\S]*?)```", response)
             if code_block_match:
                 json_str = code_block_match.group(1)
-                print(f"Extracted JSON from code block: {json_str}")
             else:
                 json_match = re.search(r"\{[\s\S]*\}", response)
                 if json_match:
                     json_str = json_match.group(0)
 
             parsed = json.loads(json_str)
-            print(f"Parsed workflow JSON: {parsed}")
 
             return Workflow(
                 id=str(uuid4()),
@@ -335,8 +330,7 @@ Output format (JSON):
                     for t in parsed.get("tasks", [])
                 ],
             )
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"Failed to parse JSON response, using fallback: {e}")
+        except (json.JSONDecodeError, Exception):
 
         return Workflow(
             id=str(uuid4()),
@@ -448,8 +442,7 @@ Please provide a comprehensive summary of what was accomplished, including:
         try:
             response = await self.llm_service.chat(messages)
             result["summary"] = response
-        except Exception as e:
-            print(f"Failed to generate response: {e}")
+        except Exception:
             result["summary"] = (
                 f"Completed {len(workflow.tasks)} tasks. {len(workflow.tasks)} tools executed."
             )
