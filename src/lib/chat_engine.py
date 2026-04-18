@@ -104,6 +104,64 @@ class ChatEngine:
                 self.current_session.id, assistant_message
             )
 
+        for task in workflow.tasks:
+            tool_call = {
+                "id": str(uuid4()),
+                "name": "execute_task",
+                "arguments": {"task": task.__dict__},
+                "status": "executing",
+            }
+
+            try:
+                task_result = await self.workflow_engine.execute_task(task)
+                tool_call["result"] = task_result
+                tool_call["status"] = "complete"
+
+                assistant_message.metadata["tool_calls"].append(tool_call)
+                yield {
+                    **assistant_message.__dict__,
+                    "content": f"**{task.title}** completed.\n\n{task_result.get('content', '') if isinstance(task_result, dict) else str(task_result)}",
+                }
+            except Exception as e:
+                tool_call["status"] = "failed"
+                tool_call["result"] = {"error": str(e)}
+                assistant_message.metadata["tool_calls"].append(tool_call)
+                yield {
+                    **assistant_message.__dict__,
+                    "content": f"**{task.title}** failed: {e}",
+                }
+
+        assistant_message.status = MessageStatus.COMPLETE
+
+        if self.current_session:
+            await self.message_store.save_message(
+                self.current_session.id, assistant_message
+            )
+
+        yield {**assistant_message.__dict__, "content": "Workflow completed."}
+
+        if self.current_session:
+            await self.message_store.save_message(self.current_session.id, user_message)
+
+        workflow = await self._create_workflow_from_message(content)
+
+        assistant_message = ChatMessage(
+            id=str(uuid4()),
+            role=MessageRole.ASSISTANT,
+            content="",
+            status=MessageStatus.STREAMING,
+            metadata={
+                "workflow_id": workflow.id,
+                "tool_calls": [],
+                "verification_result": "approved",
+            },
+        )
+
+        if self.current_session:
+            await self.message_store.save_message(
+                self.current_session.id, assistant_message
+            )
+
         results = []
         for task in workflow.tasks:
             tool_call = {
@@ -350,26 +408,7 @@ Output format (JSON):
     async def _execute_workflow(
         self, workflow: Workflow, user_content: str
     ) -> dict[str, Any]:
-        """Execute workflow and return results."""
-        if not workflow.tasks:
-            system_prompt = f"""You are a helpful AI assistant for Daedalus.
-Respond conversationally to the user's message.
-
-User message: {workflow.title}"""
-
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": workflow.title},
-            ]
-
-            response = await self.llm_service.chat(messages)
-
-            return {
-                "summary": response,
-                "tool_calls": [],
-                "verification_result": "approved",
-            }
-
+        """Execute workflow and return results. No LLM call here - flow control only."""
         result = {
             "summary": "",
             "tool_calls": [],
@@ -416,37 +455,11 @@ User message: {workflow.title}"""
 
             result["tool_calls"].append(tool_call)
 
-        # Generate response
-        result_lines = [
-            f"- **{r['task_title']}**: {r['task_description']}\n  - Status: {r['status']}\n  - Generated Content:\n    ```\n{r['content']}\n```"
-            for r in execution_results
-        ]
-        system_prompt = f"""You are a helpful AI assistant for Daedalus.
-Analyze the workflow execution results and provide a clear, natural language summary.
-
-Workflow title: {workflow.title}
-User request: {user_content}
-
-Execution Results:
-{chr(10).join(result_lines)}
-
-Please provide a comprehensive summary of what was accomplished, including:
-1. What tasks were executed
-2. What content was generated for each task
-3. Any insights or next steps"""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ]
-
-        try:
-            response = await self.llm_service.chat(messages)
-            result["summary"] = response
-        except Exception:
-            result["summary"] = (
-                f"Completed {len(workflow.tasks)} tasks. {len(workflow.tasks)} tools executed."
-            )
+        # Use task content as summary - no extra LLM call
+        result["summary"] = (
+            f"Completed {len(workflow.tasks)} tasks. "
+            f"{sum(1 for r in execution_results if r['status'] == 'completed')} succeeded."
+        )
 
         return result
 
