@@ -91,7 +91,7 @@ Daedalus enables small parameter models to achieve results comparable to high-pa
 ### Prerequisites
 
 - Node.js 18+
-- Python 3.11+
+- Python 3.9+
 - Ollama (optional, for local LLM) or OpenAI API key
 
 ### Installation
