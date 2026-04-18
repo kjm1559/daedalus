@@ -88,10 +88,33 @@ class ChatEngine:
             await self.message_store.save_message(self.current_session.id, user_message)
 
         workflow = await self._create_workflow_from_message(content)
+
+        # If no tasks, just return the LLM response
+        if not workflow.tasks:
+            return (
+                "I've processed your request and responded directly.",
+                [],
+                [],
+            )
+
+        # Execute tasks with explanations
         tool_calls = []
         task_results = []
 
-        for task in workflow.tasks:
+        for i, task in enumerate(workflow.tasks):
+            # Explanation before task
+            before_explanation = await self._generate_task_explanation(
+                task, workflow, "before"
+            )
+            task_results.append(
+                {
+                    "title": task.title,
+                    "description": task.description,
+                    "status": "executing",
+                    "explanation_before": before_explanation,
+                }
+            )
+
             tool_call = {
                 "id": str(uuid4()),
                 "name": "execute_task",
@@ -109,12 +132,18 @@ class ChatEngine:
                 tool_call["result"] = {"error": str(e)}
                 task_failed = True
 
-            task_results.append(
-                {
-                    "title": task.title,
-                    "description": task.description,
-                    "status": "completed" if not task_failed else "failed",
-                }
+            # Explanation after task
+            after_explanation = await self._generate_task_explanation(
+                task, workflow, "after", task_result if not task_failed else None
+            )
+            task_results[-1]["status"] = "completed" if not task_failed else "failed"
+            task_results[-1]["explanation_after"] = after_explanation
+            task_results[-1]["content"] = (
+                task_result.get("content", "")
+                if not task_failed and isinstance(task_result, dict)
+                else str(task_result)
+                if not task_failed
+                else str(e)
             )
 
             tool_calls.append(tool_call)
@@ -133,18 +162,65 @@ class ChatEngine:
                 self.current_session.id, assistant_message
             )
 
-        # Return summary based on task results
-        succeeded = sum(1 for tc in tool_calls if tc["status"] == "complete")
-        failed = len(tool_calls) - succeeded
+        # Summary
+        succeeded = sum(1 for tr in task_results if tr["status"] == "completed")
+        failed = len(task_results) - succeeded
 
         if succeeded > 0:
-            summary = f"Completed {succeeded}/{len(tool_calls)} tasks successfully."
+            summary = f"Completed {succeeded}/{len(workflow.tasks)} tasks. See explanations above for details."
         elif failed > 0:
-            summary = f"All {failed} tasks failed."
+            summary = f"Tasks encountered issues. Please check the explanations above."
         else:
-            summary = "No tasks to execute."
+            summary = "No tasks were executed."
 
         return summary, tool_calls, task_results
+
+    async def _generate_task_explanation(
+        self, task: Task, workflow: Workflow, phase: str, result: Any = None
+    ) -> str:
+        """Generate natural language explanation for a task."""
+        if phase == "before":
+            return await self.llm_service.chat(
+                [
+                    {
+                        "role": "system",
+                        "content": f"""You are an assistant explaining what you are about to do.
+User request: {workflow.title}
+Task to execute: {task.title}
+Description: {task.description}
+
+Explain in one short sentence (Korean) what you will do and why.
+Format: "A가 필요하므로 B를 하겠습니다" or "A를 위해 B를 수행합니다".
+Keep it under 30 characters.""",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Explain what you will do for task: {task.title}",
+                    },
+                ]
+            )
+        else:
+            content_preview = (
+                result.get("content", "")[:200] if result else "[No content]"
+            )
+            return await self.llm_service.chat(
+                [
+                    {
+                        "role": "system",
+                        "content": f"""You are an assistant explaining what you just completed.
+Task: {task.title}
+Result content preview: {content_preview}
+
+Explain in one short sentence (Korean) what was done.
+Format: "B를 완료했습니다. 결과: ..." or "A를 완료했습니다."
+Keep it under 50 characters.""",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Explain the result of task: {task.title}",
+                    },
+                ]
+            )
 
     async def _create_workflow_from_message(self, content: str) -> Workflow:
         """Create workflow from user message."""

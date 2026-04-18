@@ -164,12 +164,19 @@ class ChatCLI:
                 cmd
             )
             if task_results:
-                lines = []
                 for tr in task_results:
-                    status_icon = "✓" if tr["status"] == "completed" else "✗"
-                    lines.append(f"  {status_icon} {tr['title']}: {tr['description']}")
-                if lines:
-                    self.console.print("\n".join(lines))
+                    if "explanation_before" in tr and tr["explanation_before"]:
+                        self.console.print(f"  [dim]→ {tr['explanation_before']}[/dim]")
+                    status_icon = (
+                        "✓"
+                        if tr["status"] == "completed"
+                        else ("⋯" if tr["status"] == "executing" else "✗")
+                    )
+                    if "explanation_after" in tr and tr["explanation_after"]:
+                        self.console.print(f"  {status_icon} {tr['explanation_after']}")
+                    elif tr.get("content"):
+                        content_preview = tr["content"][:100].replace("\n", " ")
+                        self.console.print(f"  {status_icon} {content_preview}...")
             if summary:
                 self.console.print()
                 self._print_message("assistant", summary)

@@ -139,9 +139,31 @@ LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 
 ## Workflow
 
-User message → `ChatEngine.processMessage()` → LLM parses intent → creates `Workflow` → `WorkflowEngine` executes tasks in dependency order → each task generates a document → verifies → streams summary back.
+### Chat-First Design
 
-Simple greetings/questions bypass workflow and go directly to LLM.
+Daedalus always responds conversationally. The workflow engine is a **tool** used only when needed:
+
+1. **User message** — The user sends a message (greeting, question, or request)
+2. **Intent detection** — LLM determines if a workflow is needed
+   - Simple greeting/question → LLM responds directly
+   - Complex multi-step request → LLM plans a workflow
+3. **Workflow execution (if needed)** — Each task is explained before execution:
+   - _"A가 필요하므로 B를 하겠습니다"_ (before)
+   - _"B를 완료했습니다. 결과: ..."_ (after)
+4. **Natural language summary** — The final response is always a natural language summary, not a task list
+
+### Workflow Engine
+
+When a workflow is needed:
+
+1. **Task Breakdown**: LLM decomposes the request into tasks with dependencies
+2. **Execution**: Tasks run in dependency order, each generating a document
+3. **Verification**: Each task is verified (content exists) before proceeding
+4. **Summary**: Results are summarized in natural language
+
+### Simple Conversations
+
+Simple greetings and questions bypass the workflow engine entirely. The LLM responds directly, just like a normal chat.
 
 ## Commit & Push
 

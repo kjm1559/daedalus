@@ -4,7 +4,7 @@ Agent workflow orchestration system for low-parameter LLMs. React + Vite + TypeS
 
 ## Overview
 
-Daedalus enables small parameter models to achieve results comparable to high-parameter models through structured agent workflows. The system provides a Web User Interface (WebUI) and a Python-based Terminal CLI for human-agent interaction.
+Daedalus enables small parameter models to achieve results comparable to high-parameter models through structured agent workflows. The system provides a Web User Interface (WebUI) and a Python-based Terminal CLI for human-agent interaction. The primary interaction mode is **chat** — the system always responds conversationally, using task workflows as a tool when needed.
 
 ## Key Features
 
@@ -148,10 +148,31 @@ python -m cli.chat
 
 ## How It Works
 
-1. **Task Breakdown**: Complex tasks are decomposed into smaller, manageable markdown documents
-2. **Link-based Structure**: Documents are interconnected through links, creating a navigable knowledge graph
-3. **Verification Flow**: Every completed unit of work is verified before proceeding to the next step
-4. **Iterative Refinement**: The verification loop ensures errors are caught early and corrected
+### Chat-First Design
+
+Daedalus always responds conversationally. The workflow engine is a **tool** used only when needed:
+
+1. **User message** — The user sends a message (greeting, question, or request)
+2. **Intent detection** — LLM determines if a workflow is needed
+   - Simple greeting/question → LLM responds directly
+   - Complex multi-step request → LLM plans a workflow
+3. **Workflow execution (if needed)** — Each task is explained before execution:
+   - _"A가 필요하므로 B를 하겠습니다"_ (before)
+   - _"B를 완료했습니다. 결과: ..."_ (after)
+4. **Natural language summary** — The final response is always a natural language summary, not a task list
+
+### Workflow Engine
+
+When a workflow is needed:
+
+1. **Task Breakdown**: LLM decomposes the request into tasks with dependencies
+2. **Execution**: Tasks run in dependency order, each generating a document
+3. **Verification**: Each task is verified (content exists) before proceeding
+4. **Summary**: Results are summarized in natural language
+
+### Simple Conversations
+
+Simple greetings and questions bypass the workflow engine entirely. The LLM responds directly, just like a normal chat.
 
 ## Gotchas
 
