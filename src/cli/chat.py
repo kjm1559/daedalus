@@ -160,18 +160,20 @@ class ChatCLI:
             self._print_message("user", cmd)
             self.messages.append({"role": "user", "content": cmd})
 
-            self.console.print("[dim]Processing...[/dim]")
-
-            try:
-                summary, tool_calls = await self.chat_engine.process_message(cmd)
-                if summary:
-                    self.console.print()
-                    self._print_message("assistant", summary)
-                    self.messages.append({"role": "assistant", "content": summary})
-            except Exception as e:
-                traceback.print_exc()
-                self._print_error(f"{type(e).__name__}: {e}")
-                return
+            summary, tool_calls, task_results = await self.chat_engine.process_message(
+                cmd
+            )
+            if task_results:
+                lines = []
+                for tr in task_results:
+                    status_icon = "✓" if tr["status"] == "completed" else "✗"
+                    lines.append(f"  {status_icon} {tr['title']}: {tr['description']}")
+                if lines:
+                    self.console.print("\n".join(lines))
+            if summary:
+                self.console.print()
+                self._print_message("assistant", summary)
+                self.messages.append({"role": "assistant", "content": summary})
 
     async def run(self) -> None:
         """Run the chat CLI."""

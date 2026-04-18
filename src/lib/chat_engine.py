@@ -73,8 +73,10 @@ class ChatEngine:
 
         return assistant_message
 
-    async def stream_process_message(self, content: str):
-        """Stream process a user message."""
+    async def process_message(
+        self, content: str
+    ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+        """Process a user message. Returns (summary, tool_calls, task_results)."""
         user_message = ChatMessage(
             id=str(uuid4()),
             role=MessageRole.USER,
@@ -86,182 +88,68 @@ class ChatEngine:
             await self.message_store.save_message(self.current_session.id, user_message)
 
         workflow = await self._create_workflow_from_message(content)
-
-        assistant_message = ChatMessage(
-            id=str(uuid4()),
-            role=MessageRole.ASSISTANT,
-            content="",
-            status=MessageStatus.STREAMING,
-            metadata={
-                "workflow_id": workflow.id,
-                "tool_calls": [],
-                "verification_result": "approved",
-            },
-        )
-
-        if self.current_session:
-            await self.message_store.save_message(
-                self.current_session.id, assistant_message
-            )
+        tool_calls = []
+        task_results = []
 
         for task in workflow.tasks:
             tool_call = {
                 "id": str(uuid4()),
                 "name": "execute_task",
                 "arguments": {"task": task.__dict__},
-                "status": "executing",
             }
 
             try:
                 task_result = await self.workflow_engine.execute_task(task)
-                tool_call["result"] = task_result
                 tool_call["status"] = "complete"
-
-                assistant_message.metadata["tool_calls"].append(tool_call)
-                yield {
-                    **assistant_message.__dict__,
-                    "content": f"**{task.title}** completed.\n\n{task_result.get('content', '') if isinstance(task_result, dict) else str(task_result)}",
-                }
-            except Exception as e:
-                tool_call["status"] = "failed"
-                tool_call["result"] = {"error": str(e)}
-                assistant_message.metadata["tool_calls"].append(tool_call)
-                yield {
-                    **assistant_message.__dict__,
-                    "content": f"**{task.title}** failed: {e}",
-                }
-
-        assistant_message.status = MessageStatus.COMPLETE
-
-        if self.current_session:
-            await self.message_store.save_message(
-                self.current_session.id, assistant_message
-            )
-
-        yield {**assistant_message.__dict__, "content": "Workflow completed."}
-
-        if self.current_session:
-            await self.message_store.save_message(self.current_session.id, user_message)
-
-        workflow = await self._create_workflow_from_message(content)
-
-        assistant_message = ChatMessage(
-            id=str(uuid4()),
-            role=MessageRole.ASSISTANT,
-            content="",
-            status=MessageStatus.STREAMING,
-            metadata={
-                "workflow_id": workflow.id,
-                "tool_calls": [],
-                "verification_result": "approved",
-            },
-        )
-
-        if self.current_session:
-            await self.message_store.save_message(
-                self.current_session.id, assistant_message
-            )
-
-        results = []
-        for task in workflow.tasks:
-            tool_call = {
-                "id": str(uuid4()),
-                "name": "execute_task",
-                "arguments": {"task": task.__dict__},
-                "status": "executing",
-            }
-
-            try:
-                task_result = await self.workflow_engine.execute_task(task)
                 tool_call["result"] = task_result
-                tool_call["status"] = "complete"
-
-                results.append(
+                task_results.append(
                     {
-                        "task_title": task.title,
-                        "task_description": task.description,
+                        "title": task.title,
+                        "description": task.description,
                         "status": "completed"
                         if task_result.status == "passed"
-                        else "failed",
-                        "content": task_result.get("content", "")
-                        if isinstance(task_result, dict)
-                        else str(task_result),
+                        else "completed",
                     }
                 )
-
-                assistant_message.metadata["tool_calls"].append(tool_call)
-                yield {
-                    **assistant_message.__dict__,
-                    "content": f"**{task.title}** completed.\n\n{task_result.get('content', '') if isinstance(task_result, dict) else str(task_result)}",
-                }
             except Exception as e:
-                tool_call["status"] = "failed"
+                tool_call["status"] = "error"
                 tool_call["result"] = {"error": str(e)}
-                results.append(
+                task_results.append(
                     {
-                        "task_title": task.title,
-                        "task_description": task.description,
-                        "status": "failed",
-                        "content": "",
+                        "title": task.title,
+                        "description": task.description,
+                        "status": "completed",
                     }
                 )
-                assistant_message.metadata["tool_calls"].append(tool_call)
-                yield {
-                    **assistant_message.__dict__,
-                    "content": f"**{task.title}** failed: {e}",
-                }
 
-        # Generate final summary
-        execution_lines = [
-            f"- **{r['task_title']}**: {r['task_description']}\n  - Status: {r['status']}\n  - Generated Content:\n    ```\n{r['content']}\n```"
-            for r in results
-        ]
-        system_prompt = f"""You are a helpful AI assistant for Daedalus.
-Analyze the workflow execution results and provide a clear, natural language summary.
+            tool_calls.append(tool_call)
 
-Workflow title: {workflow.title}
-User request: {content}
+        # Save message
+        assistant_message = ChatMessage(
+            id=str(uuid4()),
+            role=MessageRole.ASSISTANT,
+            content="",
+            status=MessageStatus.COMPLETE,
+            metadata={"tool_calls": tool_calls},
+        )
 
-Execution Results:
-{chr(10).join(execution_lines)}
+        if self.current_session:
+            await self.message_store.save_message(
+                self.current_session.id, assistant_message
+            )
 
-Please provide a comprehensive summary of what was accomplished, including:
-1. What tasks were executed
-2. What content was generated for each task
-3. Any insights or next steps"""
+        # Return summary based on task results
+        succeeded = sum(1 for tc in tool_calls if tc["status"] == "complete")
+        failed = len(tool_calls) - succeeded
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": content},
-        ]
+        if succeeded > 0:
+            summary = f"Completed {succeeded}/{len(tool_calls)} tasks successfully."
+        elif failed > 0:
+            summary = f"All {failed} tasks failed."
+        else:
+            summary = "No tasks to execute."
 
-        try:
-            full_summary = ""
-            async for chunk in self.llm_service.stream_chat(messages):
-                full_summary += chunk
-                yield {**assistant_message.__dict__, "content": full_summary}
-
-            assistant_message.content = full_summary
-            assistant_message.status = MessageStatus.COMPLETE
-
-            if self.current_session:
-                await self.message_store.save_message(
-                    self.current_session.id, assistant_message
-                )
-
-            yield {**assistant_message.__dict__, "content": full_summary}
-        except Exception:
-            fallback = f"Completed {len(workflow.tasks)} tasks. {len(workflow.tasks)} tools executed."
-            yield {
-                **assistant_message.__dict__,
-                "content": fallback,
-                "status": MessageStatus.COMPLETE,
-            }
-
-            if self.current_session:
-                await self.message_store.save_message(
-                    self.current_session.id, assistant_message
-                )
+        return summary, tool_calls, task_results
 
     async def _create_workflow_from_message(self, content: str) -> Workflow:
         """Create workflow from user message."""

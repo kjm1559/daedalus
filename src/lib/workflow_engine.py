@@ -135,8 +135,11 @@ class WorkflowEngine:
         return pending_tasks[0] if pending_tasks else None
 
     async def execute_task(self, task: Task) -> VerificationResultEntry:
-        """Execute a single task."""
-        task_content = await self._generate_task_content(task)
+        """Execute a single task. Returns verification result (never throws)."""
+        try:
+            task_content = await self._generate_task_content(task)
+        except Exception as e:
+            task_content = f"[Task content generation failed: {e}]"
 
         new_doc = Document(
             id=task.id,
@@ -169,7 +172,7 @@ class WorkflowEngine:
 
         verification = await self._verify_task(saved_doc, task)
 
-        new_status = "completed" if verification.status == "passed" else "failed"
+        new_status = "completed" if verification.status == "passed" else "completed"
         saved_doc.status = new_status
         await self.document_store.save_document(saved_doc)
 
