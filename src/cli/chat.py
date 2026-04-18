@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import traceback
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -159,16 +160,10 @@ class ChatCLI:
             self._print_message("user", cmd)
             self.messages.append({"role": "user", "content": cmd})
 
-            # Stream response
-            assistant_content = ""
-            self.console.print(
-                Panel(
-                    "[bold cyan]AI:[/bold cyan] [dim](typing...)[/dim]",
-                    border_style="cyan",
-                )
-            )
+            self.console.print("[dim]Processing...[/dim]")
 
             try:
+                chunks = []
                 async for chunk in self.chat_engine.stream_process_message(cmd):
                     content = (
                         chunk.get("content", "")
@@ -176,16 +171,19 @@ class ChatCLI:
                         else str(chunk)
                     )
                     if content:
-                        assistant_content += content
-            except Exception as e:
-                self._print_error(str(e))
-                return
+                        chunks.append(content)
 
-            if assistant_content:
-                self._print_message("assistant", assistant_content)
-                self.messages.append(
-                    {"role": "assistant", "content": assistant_content}
-                )
+                assistant_content = "\n".join(chunks)
+                if assistant_content:
+                    self.console.print()
+                    self._print_message("assistant", assistant_content)
+                    self.messages.append(
+                        {"role": "assistant", "content": assistant_content}
+                    )
+            except Exception as e:
+                traceback.print_exc()
+                self._print_error(f"{type(e).__name__}: {e}")
+                return
 
     async def run(self) -> None:
         """Run the chat CLI."""
