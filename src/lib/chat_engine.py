@@ -98,29 +98,24 @@ class ChatEngine:
                 "arguments": {"task": task.__dict__},
             }
 
+            task_failed = False
             try:
                 task_result = await self.workflow_engine.execute_task(task)
                 tool_call["status"] = "complete"
                 tool_call["result"] = task_result
-                task_results.append(
-                    {
-                        "title": task.title,
-                        "description": task.description,
-                        "status": "completed"
-                        if task_result.status == "passed"
-                        else "completed",
-                    }
-                )
+                task_failed = task_result.status != "passed"
             except Exception as e:
                 tool_call["status"] = "error"
                 tool_call["result"] = {"error": str(e)}
-                task_results.append(
-                    {
-                        "title": task.title,
-                        "description": task.description,
-                        "status": "completed",
-                    }
-                )
+                task_failed = True
+
+            task_results.append(
+                {
+                    "title": task.title,
+                    "description": task.description,
+                    "status": "completed" if not task_failed else "failed",
+                }
+            )
 
             tool_calls.append(tool_call)
 
