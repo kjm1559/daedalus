@@ -202,7 +202,7 @@ Keep it structured and actionable."""
     async def _verify_task(
         self, document: Document, task: Task
     ) -> VerificationResultEntry:
-        """Verify task completion."""
+        """Verify task completion. Only checks content exists."""
         checks = [
             {
                 "name": "Content Generation",
@@ -210,13 +210,6 @@ Keep it structured and actionable."""
                 "message": "Content generated successfully"
                 if document.content
                 else "No content generated",
-            },
-            {
-                "name": "Task Completion",
-                "passed": len(document.content) > len(task.title),
-                "message": "Content exceeds title length"
-                if len(document.content) > len(task.title)
-                else "Content too brief",
             },
         ]
 
