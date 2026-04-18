@@ -4,7 +4,7 @@ Agent workflow orchestration system for low-parameter LLMs. React + Vite + TypeS
 
 ## Overview
 
-Daedalus enables small parameter models to achieve results comparable to high-parameter models through structured agent workflows. The system provides both Terminal User Interface (TUI) and Web-based User Interface (WebUI) chat interfaces for human-agent interaction.
+Daedalus enables small parameter models to achieve results comparable to high-parameter models through structured agent workflows. The system provides a Web User Interface (WebUI) and a Python-based Terminal CLI for human-agent interaction.
 
 ## Key Features
 
@@ -21,8 +21,6 @@ Daedalus enables small parameter models to achieve results comparable to high-pa
 **Entry points:**
 
 - WebUI: `src/main.tsx` → `src/App.tsx` (React Router: `/chat/new`, `/chat/:sessionId`)
-- CLI: `src/cli/index.tsx` (Ink TUI)
-- CLI Chat: `src/cli/chat.tsx` (`npm run cli`)
 
 **Core libraries (`src/lib/`):**
 
@@ -93,12 +91,17 @@ Daedalus enables small parameter models to achieve results comparable to high-pa
 ### Prerequisites
 
 - Node.js 18+
+- Python 3.11+
 - Ollama (optional, for local LLM) or OpenAI API key
 
 ### Installation
 
 ```bash
+# Install Node dependencies (for WebUI)
 npm install
+
+# Install Python dependencies
+pip install -e .
 ```
 
 ### Environment Setup
@@ -126,23 +129,22 @@ npm run dev
 # Build for production
 npm run build
 
-# Run CLI
-npm run cli
+# Run Python CLI
+python -m cli.chat
 ```
 
 ### Available Scripts
 
-| Command            | Description                    |
-| ------------------ | ------------------------------ |
-| `npm run dev`      | Start WebUI dev server         |
-| `npm run build`    | tsc && vite build              |
-| `npm run preview`  | Preview production build       |
-| `npm run lint`     | ESLint (no warnings allowed)   |
-| `npm run lint:fix` | Auto-fix ESLint                |
-| `npm run format`   | Prettier write                 |
-| `npm run check`    | tsc --noEmit (type check)      |
-| `npm run test`     | Vitest                         |
-| `npm run cli`      | Run CLI (tsx src/cli/chat.tsx) |
+| Command            | Description                  |
+| ------------------ | ---------------------------- |
+| `npm run dev`      | Start WebUI dev server       |
+| `npm run build`    | tsc && vite build            |
+| `npm run preview`  | Preview production build     |
+| `npm run lint`     | ESLint (no warnings allowed) |
+| `npm run lint:fix` | Auto-fix ESLint              |
+| `npm run format`   | Prettier write               |
+| `npm run check`    | tsc --noEmit (type check)    |
+| `npm run test`     | Vitest                       |
 
 ## How It Works
 
@@ -162,8 +164,9 @@ npm run cli
 - Documents stored as `workspace/<uuid>.md` with frontmatter (`key: value` per line between `---` delimiters)
 - Messages stored as `workspace/messages/<sessionId>.json` (ChatSession JSON)
 - `LLMService.fromEnv()` reads `process.env` — works in Node/CLI but may be undefined in browser
-- `src/cli/chat.tsx` and `src/cli/chat.ts` — CLI entry points; `.tsx` is the main Ink-based CLI, `.ts` is a legacy variant
-- `src/cli/simple.ts` — legacy CLI variant (readline-based)
+- `src/cli/chat.tsx` — legacy CLI entry point (removed)
+- `src/cli/chat.ts` — legacy CLI entry point (removed)
+- `src/cli/simple.ts` — legacy CLI variant (removed)
 - `tsconfig.node.json` only includes `vite.config.ts` — CLI files are covered by `tsconfig.json`
 - ESLint `max-warnings` is set to 60 — project has remaining warnings from legacy code
 - `.eslintrc.cjs` ignores CLI legacy files and test files
