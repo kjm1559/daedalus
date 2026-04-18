@@ -197,7 +197,11 @@ Keep it structured and actionable."""
         ]
 
         content = await self.llm_service.chat(messages)
-        return content
+        return (
+            content
+            if content and content.strip()
+            else f"[Empty response for task: {task.title}]"
+        )
 
     async def _verify_task(
         self, document: Document, task: Task
