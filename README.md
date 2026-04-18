@@ -1,6 +1,6 @@
 # Daedalus
 
-Agent workflow orchestration system for low-parameter LLMs. React + Vite + TypeScript (WebUI + CLI).
+Agent workflow orchestration system for low-parameter LLMs. React + Vite + TypeScript (WebUI) + Python (CLI).
 
 ## Overview
 
@@ -15,6 +15,8 @@ Daedalus enables small parameter models to achieve results comparable to high-pa
 - **LLM Provider Support**: OpenAI and Ollama (via local server)
 
 ## Architecture
+
+### TypeScript (WebUI)
 
 **Entry points:**
 
@@ -37,12 +39,54 @@ Daedalus enables small parameter models to achieve results comparable to high-pa
 
 - `src/stores/chatStore.ts` — Zustand for chat UI state
 - `src/contexts/ChatContext.tsx` — Provides ChatEngine, MessageStore, LLMService to React tree
+- `src/contexts/QueryContext.tsx` — React Query QueryClient singleton
 
 **Types:** `src/types/chat.ts`, `src/types/document.ts`
 
-**Pages:** `src/pages/` — Home, Workspace, SessionSelector, DocumentView, ChatRoutes
+**Pages:** `src/pages/` — Home, Workspace, SessionSelector, DocumentView, ChatRoutes, SessionWorkspace
 
-**CLI components:** `src/cli/components/`
+**UI components (`src/components/ui/`):**
+
+- `Button.tsx` — Button with variant/size props
+- `Card.tsx` — Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter
+- `Input.tsx` — Input, Textarea
+- `Badge.tsx` — Status badge with variants
+- `DocumentCard.tsx` — Document card with status display
+- `DocumentTree.tsx` — Hierarchical document tree view
+
+**Chat components (`src/components/chat/`):**
+
+- `ChatContainer.tsx` — Main chat layout with header, messages, input
+- `ChatInput.tsx` — Auto-resizing textarea with send button
+- `MessageList.tsx` — Message bubbles with tool call display
+- `SessionList.tsx` — Session list with create/open actions
+- `StreamingIndicator.tsx` — Animated "AI is thinking..." indicator
+
+**Layout:**
+
+- `src/components/Layout.tsx` — App shell with header, main, Toaster
+
+### Python (CLI)
+
+**Entry point:** `src/cli/chat.py` (`python -m cli.chat`)
+
+**Core libraries (`src/lib/`):**
+
+- `chat_engine.py` — Chat engine
+- `workflow_engine.py` — Workflow engine
+- `workflow.py` — Workflow utilities
+- `llm.py` — LLM service
+- `document_store.py` — Document storage
+- `message_store.py` — Message storage
+
+**Types (`src/models/`):**
+
+- `data.py` — All dataclass models (MessageRole, TaskStatus, WorkflowState, etc.)
+
+**CLI components (`src/cli/`):**
+
+- `chat.py` — Main CLI entry point (prompt_toolkit)
+- `components.py` — CLI prompt components
 
 ## Getting Started
 
