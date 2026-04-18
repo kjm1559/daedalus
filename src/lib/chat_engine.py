@@ -331,6 +331,7 @@ Output format (JSON):
                 ],
             )
         except (json.JSONDecodeError, Exception):
+            pass
 
         return Workflow(
             id=str(uuid4()),
