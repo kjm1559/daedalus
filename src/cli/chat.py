@@ -163,23 +163,11 @@ class ChatCLI:
             self.console.print("[dim]Processing...[/dim]")
 
             try:
-                chunks = []
-                async for chunk in self.chat_engine.stream_process_message(cmd):
-                    content = (
-                        chunk.get("content", "")
-                        if isinstance(chunk, dict)
-                        else str(chunk)
-                    )
-                    if content:
-                        chunks.append(content)
-
-                assistant_content = "\n".join(chunks)
-                if assistant_content:
+                summary, tool_calls = await self.chat_engine.process_message(cmd)
+                if summary:
                     self.console.print()
-                    self._print_message("assistant", assistant_content)
-                    self.messages.append(
-                        {"role": "assistant", "content": assistant_content}
-                    )
+                    self._print_message("assistant", summary)
+                    self.messages.append({"role": "assistant", "content": summary})
             except Exception as e:
                 traceback.print_exc()
                 self._print_error(f"{type(e).__name__}: {e}")
