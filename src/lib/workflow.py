@@ -1,9 +1,20 @@
 """Workflow types and utilities."""
+# -*- coding: utf-8 -*-
 
 from __future__ import annotations
 
+import sys
+import os
+
 from models.data import Workflow, Task
 from datetime import datetime
+
+# Ensure stdout/stderr are UTF-8
+if hasattr(sys.stdout, 'buffer') and sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if hasattr(sys.stderr, 'buffer') and sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 
 def create_workflow(title: str) -> Workflow:

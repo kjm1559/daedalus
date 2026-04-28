@@ -1,9 +1,13 @@
 """Chat engine for processing messages."""
+# -*- coding: utf-8 -*-
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import re
+import sys
 from typing import Any
 
 from models.data import (
@@ -22,9 +26,20 @@ from lib.document_store import DocumentStore
 from lib.workflow_engine import WorkflowEngine
 from uuid import uuid4
 
+# Ensure stdout/stderr are UTF-8
+if hasattr(sys.stdout, 'buffer') and sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if hasattr(sys.stderr, 'buffer') and sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+
 
 class ChatEngine:
-    """Processes user messages and orchestrates workflows."""
+    """Processes user messages and orchestrates workflows.
+    
+    Flow:
+      Intent Recognition → Chat (fast LLM response) OR Task → Plan → Process → Evaluate
+    """
 
     def __init__(self, config: ChatEngineConfig) -> None:
         self.message_store = config.message_store
@@ -39,44 +54,16 @@ class ChatEngine:
             max_steps=self.max_steps,
         )
 
-    async def process_message(self, content: str) -> ChatMessage:
-        """Process a user message."""
-        user_message = ChatMessage(
-            id=str(uuid4()),
-            role=MessageRole.USER,
-            content=content,
-            status=MessageStatus.COMPLETE,
-        )
-
-        if self.current_session:
-            await self.message_store.save_message(self.current_session.id, user_message)
-
-        workflow = await self._create_workflow_from_message(content)
-        result = await self._execute_workflow(workflow, content)
-
-        assistant_message = ChatMessage(
-            id=str(uuid4()),
-            role=MessageRole.ASSISTANT,
-            content=result.get("summary", ""),
-            status=MessageStatus.COMPLETE,
-            metadata={
-                "workflow_id": workflow.id,
-                "tool_calls": result.get("tool_calls", []),
-                "verification_result": result.get("verification_result"),
-            },
-        )
-
-        if self.current_session:
-            await self.message_store.save_message(
-                self.current_session.id, assistant_message
-            )
-
-        return assistant_message
-
     async def process_message(
         self, content: str
-    ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
-        """Process a user message. Returns (summary, tool_calls, task_results)."""
+    ) -> tuple[str | dict, list[dict[str, Any]], list[dict[str, Any]]]:
+        """Process a user message. Returns (summary, tool_calls, task_results).
+        
+        Flow:
+        1. Intent Recognition: chat vs task
+        2. If chat → fast LLM response (no workflow overhead)
+        3. If task → Plan → Process → Evaluate
+        """
         user_message = ChatMessage(
             id=str(uuid4()),
             role=MessageRole.USER,
@@ -87,33 +74,41 @@ class ChatEngine:
         if self.current_session:
             await self.message_store.save_message(self.current_session.id, user_message)
 
+        # ===== Phase 1: Intent Recognition =====
+        intent = await self._classify_intent(content)
+        
+        if intent == "chat":
+            return await self._handle_chat_response(content)
+        
+        # ---- Task path: Plan -> Process -> Evaluate ----
         workflow = await self._create_workflow_from_message(content)
 
-        # If no tasks, just return the LLM response
+        # ===== Phase 2: Plan =====
+        plan = await self._plan_task(workflow)
+        plan_summary = plan.get("title", workflow.title)
+
+        # If no tasks planned, respond directly
         if not workflow.tasks:
             return (
-                "I've processed your request and responded directly.",
+                f"Plan: {plan_summary}\nNo tasks to execute.",
                 [],
                 [],
             )
 
-        # Execute tasks with explanations
+        # ===== Phase 3: Process (Execute Tasks) =====
         tool_calls = []
         task_results = []
 
-        for i, task in enumerate(workflow.tasks):
-            # Explanation before task
+        for task in workflow.tasks:
             before_explanation = await self._generate_task_explanation(
                 task, workflow, "before"
             )
-            task_results.append(
-                {
-                    "title": task.title,
-                    "description": task.description,
-                    "status": "executing",
-                    "explanation_before": before_explanation,
-                }
-            )
+            task_results.append({
+                "title": task.title,
+                "description": task.description,
+                "status": "executing",
+                "explanation_before": before_explanation,
+            })
 
             tool_call = {
                 "id": str(uuid4()),
@@ -122,17 +117,20 @@ class ChatEngine:
             }
 
             task_failed = False
+            task_result = None
+            error_message = ""
             try:
                 task_result = await self.workflow_engine.execute_task(task)
                 tool_call["status"] = "complete"
                 tool_call["result"] = task_result
-                task_failed = task_result.status != "passed"
+                failed = task_result.status != "passed"
+                task_failed = task_failed or failed
             except Exception as e:
                 tool_call["status"] = "error"
                 tool_call["result"] = {"error": str(e)}
                 task_failed = True
+                error_message = str(e)
 
-            # Explanation after task
             after_explanation = await self._generate_task_explanation(
                 task, workflow, "after", task_result if not task_failed else None
             )
@@ -143,10 +141,13 @@ class ChatEngine:
                 if not task_failed and isinstance(task_result, dict)
                 else str(task_result)
                 if not task_failed
-                else str(e)
+                else error_message
             )
 
             tool_calls.append(tool_call)
+
+        # ===== Phase 4: Evaluate =====
+        evaluation = await self._evaluate_workflow(task_results, plan_summary)
 
         # Save message
         assistant_message = ChatMessage(
@@ -162,65 +163,191 @@ class ChatEngine:
                 self.current_session.id, assistant_message
             )
 
-        # Summary
+        evaluation["phase"] = "evaluated"
+        return evaluation, tool_calls, task_results
+
+    # ────────────────────────────────
+    # Phase 1: Intent Recognition
+    # ────────────────────────────────
+
+    async def _classify_intent(self, content: str) -> str:
+        """Determine if input is casual chat or a task-request.
+        
+        Strategy:
+        - Fast path: heuristic keywords/patterns
+        - If ambiguous: delegate to LLM (one-shot prompt)
+        """
+        cleaned = content.strip()
+
+        # --- Fast path: Chat signals ---
+        chat_signals = [
+            r'^(안녕|반갑|고마|감사|thanks|thank|bye|안녕가)',
+            r'^(네|예|아니|맞아|좋아|알겠|확인|ok|okay)$',
+            r'^(너는|당신은|누구야|너의.*이름|who are you)',
+            r'^[?.!]{1,3}$',
+            r'^.+?\?$',  # single question without action words
+        ]
+        for pat in chat_signals:
+            if re.search(pat, cleaned, re.IGNORECASE):
+                return "chat"
+
+        # --- Fast path: Task signals ---
+        task_signals = [
+            r'(쓰|작성|생성|만들|구축|개발|implement|write|create|build)',
+            r'(분석|조사|연구|review|평가|analyze|evaluate)',
+            r'(스크립트|자동화|pipeline|프로세스)',
+            r'(파일|폴더|경로|구조|tree|ls|grep|find|directory)',
+            r'(데이터|csv|json|yaml|excel|엑셀|db|database)',
+            r'(서버|config|설정|environment|setup|install|설치|빌드)',
+            r'(테스트|검증|debug|에러|검토|verify)',
+            r'(실행|수행|perform|execute)',
+            r'(구현|implement|realize)',
+        ]
+        task_score = 0
+        for pat in task_signals:
+            if re.search(pat, cleaned, re.IGNORECASE):
+                task_score += 1
+        
+        if task_score >= 1:
+            return "task"
+
+        # --- Ambiguous: LLM fallback ---
+        try:
+            prompt = (
+                "Classify this message: 'chat' or 'task'. "
+                "chat=casual, greeting, hello, thank, question without action. "
+                "task=requires creation, analysis, code, generation, modification, or any work. "
+                "Return ONLY 'chat' or 'task'."
+            )
+            msg = [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": cleaned},
+            ]
+            resp = await self.llm_service.chat(msg)
+            return resp.strip().lower()[:4]
+        except Exception:
+            return "task"  # default to task if LLM fails
+
+    async def _handle_chat_response(self, content: str) -> tuple[str, list, list]:
+        """Handle casual chat: one LLM call, no workflow overhead."""
+        response = await self.llm_service.chat([
+            {"role": "system", "content": (
+                "You are a concise, friendly assistant. "
+                "Respond briefly (under 3 sentences). Use Korean if the input is Korean."
+            )},
+            {"role": "user", "content": content},
+        ])
+        return response, [], []
+
+    # ────────────────────────────────
+    # Phase 2: Plan
+    # ────────────────────────────────
+
+    async def _plan_task(self, workflow: Workflow) -> dict:
+        """Generate a plan for the current workflow.
+        
+        Prompt: concise, output task list with dependencies.
+        """
+        plan_prompt = (
+            "You are a task planner. "
+            "Create a plan for the following user request. "
+            "Output ONLY a JSON object with this structure:\n"
+            "{\n"
+            '  "title": "brief plan summary",\n'
+            '  "tasks": [\n'
+            "    {\n"
+            '      "title": "what to do",\n'
+            '      "description": "brief description",\n'
+            '      "dependencies": []\n'
+            "    }\n"
+            "  ]\n"
+            "}\n\n"
+            f"User request: {workflow.title}\n"
+            f"Context: {workflow.description if hasattr(workflow, 'description') else content}"
+        )
+        try:
+            resp = await self.llm_service.chat([
+                {"role": "system", "content": plan_prompt},
+                {"role": "user", "content": workflow.title},
+            ])
+            return json.loads(resp)
+        except (json.JSONDecodeError, Exception):
+            return {"title": workflow.title, "tasks": []}
+
+    # ────────────────────────────────
+    # Phase 4: Evaluate
+    # ────────────────────────────────
+
+    async def _evaluate_workflow(
+        self, task_results: list[dict], plan_summary: str
+    ) -> dict:
+        """Evaluate execution results against the plan.
+        
+        Returns: evaluation summary (dict) with pass/fail per task.
+        """
         succeeded = sum(1 for tr in task_results if tr["status"] == "completed")
         failed = len(task_results) - succeeded
 
-        if succeeded > 0:
-            summary = f"Completed {succeeded}/{len(workflow.tasks)} tasks. See explanations above for details."
-        elif failed > 0:
-            summary = f"Tasks encountered issues. Please check the explanations above."
-        else:
-            summary = "No tasks were executed."
+        # Quick eval prompt for LLM insight
+        eval_prompt = (
+            "Evaluate these task results and output a concise summary in Korean.\n"
+            f"Plan: {plan_summary}\n"
+            f"Executed: {succeeded}/{len(task_results)} tasks completed.\n"
+            f"Failures:\n"
+            + "\n".join(
+                f"  - {tr['title']}: {tr.get('error', tr.get('content', 'unknown'))}"
+                for tr in task_results if tr["status"] == "failed"
+            )
+        )
+        try:
+            eval_detail = await self.llm_service.chat([
+                {"role": "system", "content": (
+                    "You are an evaluator. Be concise. Output valid JSON:\n"
+                    '{"overall": "pass/fail/partial", "summary": "short summary in Korean"}'
+                )},
+                {"role": "user", "content": eval_prompt},
+            ])
+            return json.loads(eval_detail)
+        except (json.JSONDecodeError, Exception):
+            return {
+                "overall": "pass" if failed == 0 else ("partial" if succeeded > 0 else "fail"),
+                "summary": f"Plan: {plan_summary}. {succeeded}/{len(task_results)} tasks completed.",
+            }
 
-        return summary, tool_calls, task_results
+    # ────────────────────────────────
+    # Legacy helpers (keep for compat)
+    # ────────────────────────────────
 
     async def _generate_task_explanation(
         self, task: Task, workflow: Workflow, phase: str, result: Any = None
     ) -> str:
         """Generate natural language explanation for a task."""
         if phase == "before":
-            return await self.llm_service.chat(
-                [
-                    {
-                        "role": "system",
-                        "content": f"""You are an assistant explaining what you are about to do.
+            return await self.llm_service.chat([
+                {"role": "system", "content": f"""You are an assistant explaining what you are about to do.
 User request: {workflow.title}
 Task to execute: {task.title}
 Description: {task.description}
 
 Explain in one short sentence (Korean) what you will do and why.
 Format: "A가 필요하므로 B를 하겠습니다" or "A를 위해 B를 수행합니다".
-Keep it under 30 characters.""",
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Explain what you will do for task: {task.title}",
-                    },
-                ]
-            )
+Keep it under 30 characters."""},
+                {"role": "user", "content": f"Explain what you will do for task: {task.title}"},
+            ])
         else:
             content_preview = (
                 result.get("content", "")[:200] if result else "[No content]"
             )
-            return await self.llm_service.chat(
-                [
-                    {
-                        "role": "system",
-                        "content": f"""You are an assistant explaining what you just completed.
+            return await self.llm_service.chat([
+                {"role": "system", "content": f"""You are an assistant explaining what you just completed.
 Task: {task.title}
 Result content preview: {content_preview}
 
 Explain in one short sentence (Korean) what was done.
 Format: "B를 완료했습니다. 결과: ..." or "A를 완료했습니다."
-Keep it under 50 characters.""",
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Explain the result of task: {task.title}",
-                    },
-                ]
-            )
+Keep it under 50 characters."""},
+                {"role": "user", "content": f"Explain the result of task: {task.title}"},
+            ])
 
     async def _create_workflow_from_message(self, content: str) -> Workflow:
         """Create workflow from user message."""
@@ -293,35 +420,18 @@ Output format (JSON):
         """Check if this is a simple conversational query."""
         trimmed = content.strip().lower()
         simple_greetings = [
-            "hello",
-            "hi",
-            "hey",
-            "greetings",
-            "how are you",
-            "how's it going",
-            "how are things",
-            "what's up",
-            "what's new",
-            "who are you",
-            "what is your name",
-            "bye",
-            "goodbye",
-            "see you",
-            "thank you",
-            "thanks",
-            "ty",
-            "help",
-            "what can you do",
-            "what are you capable of",
-            "explain",
-            "tell me",
+            "hello", "hi", "hey", "greetings", "how are you",
+            "how's it going", "how are things", "what's up",
+            "what's new", "who are you", "what is your name",
+            "bye", "goodbye", "see you", "thank you", "thanks",
+            "ty", "help", "what can you do", "what are you capable of",
+            "explain", "tell me",
         ]
         return any(trimmed.startswith(g) for g in simple_greetings)
 
     def _parse_workflow_response(self, response: str, user_content: str) -> Workflow:
         """Parse LLM response into workflow."""
         try:
-            # Try to extract JSON from response
             json_str = response
             code_block_match = re.search(r"```json\s*([\s\S]*?)```", response)
             if code_block_match:
@@ -388,33 +498,28 @@ Output format (JSON):
                 tool_call["result"] = task_result
                 tool_call["status"] = "complete"
 
-                execution_results.append(
-                    {
-                        "task_title": task.title,
-                        "task_description": task.description,
-                        "status": "completed"
-                        if task_result.status == "passed"
-                        else "failed",
-                        "content": task_result.get("content", "")
-                        if isinstance(task_result, dict)
-                        else str(task_result),
-                    }
-                )
+                execution_results.append({
+                    "task_title": task.title,
+                    "task_description": task.description,
+                    "status": "completed"
+                    if task_result.status == "passed"
+                    else "failed",
+                    "content": task_result.get("content", "")
+                    if isinstance(task_result, dict)
+                    else str(task_result),
+                })
             except Exception as e:
                 tool_call["status"] = "failed"
                 tool_call["result"] = {"error": str(e)}
-                execution_results.append(
-                    {
-                        "task_title": task.title,
-                        "task_description": task.description,
-                        "status": "failed",
-                        "content": "",
-                    }
-                )
+                execution_results.append({
+                    "task_title": task.title,
+                    "task_description": task.description,
+                    "status": "failed",
+                    "content": "",
+                })
 
             result["tool_calls"].append(tool_call)
 
-        # Use task content as summary - no extra LLM call
         result["summary"] = (
             f"Completed {len(workflow.tasks)} tasks. "
             f"{sum(1 for r in execution_results if r['status'] == 'completed')} succeeded."

@@ -1,13 +1,22 @@
 """Document store for file-based document storage."""
+# -*- coding: utf-8 -*-
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 from models.data import Document
+
+# Ensure stdout/stderr are UTF-8
+if hasattr(sys.stdout, 'buffer') and sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if hasattr(sys.stderr, 'buffer') and sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 
 class DocumentStore:

@@ -92,12 +92,13 @@ LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 
 **Core libraries (`src/lib/`):**
 
-- `chat_engine.py` — Chat engine (imports from `lib.*` and `models.*`)
-- `workflow_engine.py` — Workflow engine (imports from `lib.*` and `models.*`)
-- `workflow.py` — Workflow utilities (imports from `models.*`)
-- `llm.py` — LLM service (imports from `models.*`)
-- `document_store.py` — Document storage (imports from `models.*`)
-- `message_store.py` — Message storage (imports from `models.*`)
+- `chat_engine.py` — Chat engine (Intent Recognition → Chat OR Plan → Process → Evaluate)
+- `intent_classifier.py` — Fast heuristic intent classification (chat vs task) with LLM fallback
+- `workflow_engine.py` — Workflow engine
+- `workflow.py` — Workflow utilities
+- `llm.py` — LLM service
+- `document_store.py` — Document storage
+- `message_store.py` — Message storage
 
 **Types (`src/models/`):**
 
@@ -143,14 +144,19 @@ LLM provider auto-selects: OpenAI if `OPENAI_API_KEY` is set, otherwise Ollama.
 
 Daedalus always responds conversationally. The workflow engine is a **tool** used only when needed:
 
-1. **User message** — The user sends a message (greeting, question, or request)
-2. **Intent detection** — LLM determines if a workflow is needed
-   - Simple greeting/question → LLM responds directly
-   - Complex multi-step request → LLM plans a workflow
-3. **Workflow execution (if needed)** — Each task is explained before execution:
+1. **Intent Recognition** — Fast heuristic patterns check chat vs. task intent before any LLM call
+   - "chat" signals: greetings, simple questions, thanks, bye → return instantly to LLM
+   - "task" signals: keywords like write, analyze, generate, code → proceed to Plan
+   - Ambiguous: delegate to LLM (one-shot classification)
+2. **Branch**
+   - **Chat**: LLM responds directly (no workflow overhead) → fast response
+   - **Task**: Phase 2 → Phase 3 → Phase 4
+3. **Phase 2: Plan** — LLM creates a structured plan with tasks and dependencies
+4. **Phase 3: Process** — Each task executes with before/after explanations:
    - _"A가 필요하므로 B를 하겠습니다"_ (before)
    - _"B를 완료했습니다. 결과: ..."_ (after)
-4. **Natural language summary** — The final response is always a natural language summary, not a task list
+5. **Phase 4: Evaluate** — Post-execution evaluation against the plan
+6. **Natural language summary** — Final response is always a natural language summary, not a task list
 
 ### Workflow Engine
 

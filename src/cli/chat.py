@@ -1,4 +1,5 @@
 """Chat CLI using prompt_toolkit for interactive chat."""
+# -*- coding: utf-8 -*-
 
 from __future__ import annotations
 
@@ -7,6 +8,15 @@ import os
 import sys
 import traceback
 from typing import Any
+
+# Ensure stdout/stderr are UTF-8
+if hasattr(sys.stdout, 'buffer') and sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if hasattr(sys.stderr, 'buffer') and sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+
+# Ensure PYTHONIOENCODING is set
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
@@ -30,7 +40,7 @@ class ChatCLI:
     """Interactive chat CLI using prompt_toolkit."""
 
     def __init__(self) -> None:
-        self.console = Console()
+        self.console = Console(force_terminal=True, color_system='256')
         self.message_store = MessageStore(
             os.environ.get("DAEDALUS_WORKSPACE", "./workspace") + "/messages"
         )
@@ -179,8 +189,18 @@ class ChatCLI:
                         self.console.print(f"  {status_icon} {content_preview}...")
             if summary:
                 self.console.print()
-                self._print_message("assistant", summary)
-                self.messages.append({"role": "assistant", "content": summary})
+                try:
+                    # evaluation dict → extract summary string
+                    if isinstance(summary, dict):
+                        eval_summary = summary.get("summary", summary.get("overall", str(summary)))
+                        self._print_message("assistant", eval_summary)
+                        self.messages.append({"role": "assistant", "content": eval_summary})
+                    else:
+                        self._print_message("assistant", str(summary))
+                        self.messages.append({"role": "assistant", "content": str(summary)})
+                except Exception:
+                    self._print_message("assistant", str(summary))
+                    self.messages.append({"role": "assistant", "content": str(summary)})
 
     async def run(self) -> None:
         """Run the chat CLI."""

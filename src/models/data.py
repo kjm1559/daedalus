@@ -1,10 +1,21 @@
 """Types for Daedalus."""
+# -*- coding: utf-8 -*-
 
 from __future__ import annotations
+
+import sys
+import os
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+# Ensure stdout/stderr are UTF-8
+if hasattr(sys.stdout, 'buffer') and sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if hasattr(sys.stderr, 'buffer') and sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 
 class MessageRole(str, Enum):

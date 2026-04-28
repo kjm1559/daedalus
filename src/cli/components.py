@@ -1,4 +1,9 @@
 """CLI components for Daedalus."""
+# -*- coding: utf-8 -*-
+
+import asyncio
+import sys
+import os
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
@@ -13,14 +18,20 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.live import Live
 from typing import Any
-import asyncio
+
+# Ensure stdout/stderr are UTF-8
+if hasattr(sys.stdout, 'buffer') and sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if hasattr(sys.stderr, 'buffer') and sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 
 class CLIPrompt:
     """CLI prompt interface using prompt_toolkit."""
 
     def __init__(self) -> None:
-        self.console = Console()
+        self.console = Console(force_terminal=True, color_system='256')
         self.style = Style.from_dict(
             {
                 "prompt": "ansicyan bold",

@@ -1,12 +1,12 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "daedalus"
 version = "0.1.0"
 description = "Agent workflow orchestration system for low-parameter LLMs"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = [
     "prompt_toolkit>=3.0.0",
     "pydantic>=2.0.0",

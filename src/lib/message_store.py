@@ -1,14 +1,23 @@
 """Message store for file-based chat storage."""
+# -*- coding: utf-8 -*-
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 from models.data import ChatMessage, ChatSession
 from uuid import uuid4
+
+# Ensure stdout/stderr are UTF-8
+if hasattr(sys.stdout, 'buffer') and sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if hasattr(sys.stderr, 'buffer') and sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 
 class MessageStore:
@@ -42,7 +51,7 @@ class MessageStore:
                 messages=[message],
             )
         file_path.write_text(
-            json.dumps(session.__dict__, default=str, indent=2),
+            json.dumps(session.__dict__, default=str, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
 
@@ -86,7 +95,7 @@ class MessageStore:
         )
         file_path = self._get_file_path(session_id)
         file_path.write_text(
-            json.dumps(session.__dict__, default=str, indent=2),
+            json.dumps(session.__dict__, default=str, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
         return session
